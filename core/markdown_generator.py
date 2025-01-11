@@ -1,5 +1,4 @@
 import os
-import markdown
 import pathlib
 from fnmatch import fnmatch
 
@@ -261,21 +260,64 @@ def generate_markdown(directory, output_file="android_project_overview.md", focu
 
     print(f"Markdown file generated: {output_file_path}")
 
+def generate_markdown_with_excludes(directory, output_file_path, user_excluded_paths):
+    """
+    Generate a markdown file, but also exclude any paths the user unchecked in the Treeview.
 
-if __name__ == "__main__":
-    print("Starting markdown generator script.")
-    # Prompt the user for the project directory and output file name
-    project_directory = input("Enter the path to the project directory: ").strip().strip('"')
-    print(f"User entered project directory: {project_directory}")
-    output_markdown = input("Enter the output markdown file name (default: android_project_overview.md): ").strip() or "android_project_overview.md"
-    print(f"User entered output markdown file name: {output_markdown}")
+    Args:
+        directory (str): Path to the project directory.
+        output_file_path (str): Absolute path for the output markdown file.
+        user_excluded_paths (list): A list of absolute paths that the user wants excluded.
+    """
+    # 1. Get base exclude patterns from .gitignore
+    exclude_patterns = parse_gitignore(directory)
 
-    # Resolve the path to ensure it is absolute and normalized
-    project_directory = pathlib.Path(project_directory).resolve()
-    print(f"Resolved project directory: {project_directory}")
+    # 2. Convert each user-excluded path into a relative pattern and add to exclude_patterns
+    for abs_path in user_excluded_paths:
+        rel_path = os.path.relpath(abs_path, directory).replace("\\", "/")
+        # If it's a directory, we might add a trailing slash
+        if os.path.isdir(abs_path):
+            rel_path = rel_path.rstrip("/") + "/"
+        exclude_patterns.append(rel_path)
 
-    if os.path.isdir(project_directory):
-        print("Valid directory path. Proceeding with markdown generation.")
-        generate_markdown(str(project_directory), output_markdown, focus_subdir="app")
-    else:
-        print("Invalid directory path. Please try again.")
+    # 3. Now do the same logic as generate_markdown, except using exclude_patterns
+    markdown_content = "# Project Overview\n\n"
+
+    # File structure
+    markdown_content += "## File Structure\n\n"
+    markdown_content += (
+        "This section outlines the hierarchical structure of the project's files and directories.\n\n"
+    )
+    markdown_content += generate_file_structure(
+        directory,
+        exclude_patterns=exclude_patterns,
+        root_dir=directory,
+        focus_subdir="app"
+    )
+    markdown_content += "\n\n"
+
+    # README
+    markdown_content += "## Project Documentation\n\n"
+    markdown_content += include_readme(directory)
+
+    # Add Kotlin file contents section
+    print("Adding Kotlin file contents to markdown.")
+    markdown_content += "## Extracted Kotlin Files\n\n"
+    markdown_content += "Below are the contents of Kotlin files in the project, organized by file paths.\n\n"
+    markdown_content += include_kotlin_files(directory, exclude_patterns=exclude_patterns, root_dir=directory)
+
+    # Add Gradle and TOML files section
+    print("Adding Gradle and TOML file contents to markdown.")
+    markdown_content += "## Configuration Files\n\n"
+    markdown_content += include_gradle_and_toml_files(directory)
+
+
+    # Ensure the output directory exists
+    output_dir = os.path.dirname(output_file_path)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Write to disk
+    with open(output_file_path, "w", encoding="utf-8") as f:
+        f.write(markdown_content)
+
+    print(f"Markdown file generated at: {output_file_path}")
